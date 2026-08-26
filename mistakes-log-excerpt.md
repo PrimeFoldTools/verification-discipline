@@ -1,6 +1,6 @@
 # Failure log — six entries
 
-Sanitized excerpts from a running ledger I keep (over 160 entries). Every time an
+Sanitized excerpts from a running ledger I keep (180+ entries). Every time an
 agent or I get something wrong, the failure, the countermeasure, and the test that
 now catches it go here. Future sessions read it first, so a given mistake is expensive
 once, not weekly. Format: **Failure → Countermeasure → Test**.
