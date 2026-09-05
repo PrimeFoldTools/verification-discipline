@@ -22,6 +22,11 @@ fleet.
 
   the countermeasure and the test that now catches it.
 
+- **[andon](https://github.com/PrimeFoldTools/andon)** — the installable kit version of
+
+  this discipline: defect ledger → countermeasure → mechanical guard, stripped from the
+  system I run daily.
+
 ## The one-line version
 
 My validation stack is built to reject flattering results, including my own. That
