@@ -18,8 +18,8 @@ worked.
 
 This is the most common way an AI lies to you: it writes a check that cannot come out red,
 then reports the green as proof. My rule now: a test earns trust only after I've fed it the
-exact defect it claims to catch and watched it fail. Green on a bug I seeded is a real test.
-Green out of the box tells me nothing.
+exact defect it claims to catch and watched it fail for the *right* reason when the defect is
+present, then pass once corrected. Green out of the box tells me nothing.
 
 ## The claim I most wanted to be true
 
@@ -41,15 +41,19 @@ is complete, three things happen before I believe it.
 
 1. **A written failure log.** Every time I get burned, the symptom, the correction, and
 
-   where it's now codified go into a running ledger of 180+ entries. Future sessions
-   read it first, so the same mistake is expensive once, not weekly. It reads more like a
-   regression suite than a diary.
+   where it's now codified go into a running ledger. Future sessions read it
+   first — it's meant to help me recognize a repeat instead of rediscovering it, and the
+   entries that still recur are the ones telling me a note isn't enough and the fix needs to
+   be mechanical. It reads more like a regression suite than a diary.
 
 2. **A claim-check gate.** Before I let myself write "ready," "done," or "verified" about
 
-   anything load-bearing, a hook forces a specific check against the specific claim. It
-   fired on me the day I nearly called a resume "finished" while the sendable PDF was stale.
-   The phrase tripped the gate, not my memory.
+   anything load-bearing, a hook checks the phrase against the record: in block mode, when a
+   detected "done" has no recent same-session verification entry whose subject matches, the
+   hook returns a block decision. It doesn't run the check for me and can't tell an honest
+   entry from a well-worded one — it just refuses to let the claim stand with nothing on
+   record (subject to documented fallbacks). It fired the day I nearly called a resume
+   "finished" while the sendable PDF was stale. The phrase tripped the gate, not my memory.
 
 3. **Adversarial verification.** For public, capital-adjacent, or gate-changing work, I run
 
@@ -94,6 +98,9 @@ most likely lying, and how I'd force each one into the open without the agent in
 gate (the gate does promote — this set didn't earn it); one further cell errored with zero
 out-of-sample trades and was dropped from the valid set.
 
-*The proof artifacts behind this case study — the failure log, the claim-check gate, the
-mutation harnesses, the adversarial-verification runner — are sanitized into the runnable
-example in this repo. This case study is its written companion.*
+*Where the proof lives: the runnable `gate-mutation-example/` is one gate and its mutation
+harness — the executable form of the "watch it fail" argument, not the whole fleet. The
+failure log is sampled in `mistakes-log-excerpt.md`; the installable claim-check gate is in
+the [andon](https://github.com/PrimeFoldTools/andon) repo; the adversarial-verification
+runner is described here, not shipped. `WHAT_THIS_DOES_NOT_PROVE.md` is the honest boundary,
+and this case study is the written companion.*
