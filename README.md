@@ -56,7 +56,7 @@ Can your tests fail? This plants small bugs, one at a time, in a copy of your pr
 python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --test "python3 -m pytest -q -x"
 ```
 
-First it runs a self-check: it adds one line to each source file in the copy that records the file's path when Python loads it, and checks which files your tests really loaded from the copy. Files they load from somewhere else (often an installed package) or never load are left out and named in the report, because bugs planted there would look like survivors. If no file loads from the copy, it stops instead of giving you a misleading report.
+First it runs a self-check: it adds one line to each source file in the copy that records the file's path when Python loads it, and checks which files your tests really loaded from the copy. Files they load from somewhere else (often an installed package) or never load are left out and named in the report, because bugs planted there would look like survivors. Then it breaks every file that did load and checks that your test command fails. If no file loads from the copy, or the command still passes with the code broken, it stops instead of giving you a misleading report.
 
 Just changed some code, or your agent did? Check only those lines:
 

@@ -381,7 +381,27 @@ def main(argv: list[str] | None = None) -> int:
             print("Common causes: the project is installed as a package (pip install / pip install -e),")
             print("or the tests never import it. Run your tests against the source folder, then try again.")
             return 3
-        print(f"Self-check passed: your tests loaded {len(usable)} of {len(checked)} source files from this copy.")
+        # The test command must also be able to FAIL. Break every file the tests loaded; if the
+        # command still reports success (a runner that ignores the result, a wrapper that
+        # always exits 0), every planted bug would look like a survivor.
+        broken: dict[str, bytes] = {}
+        for rel in usable:
+            path = os.path.join(root, rel)
+            with open(path, "rb") as f:
+                broken[path] = f.read()
+            with open(path, "wb") as f:
+                f.write(b'raise ImportError("try_on_your_repo self-check")\n' + broken[path])
+        result, _ = run_tests(a.test, root, a.timeout)
+        for path, raw in broken.items():
+            with open(path, "wb") as f:
+                f.write(raw)
+        if result == "pass":
+            print("Self-check failed: your test command still reports success when every source file")
+            print("your tests load is broken. A planted bug could not make it fail. Make the command")
+            print("exit non-zero when a test fails, then try again.")
+            return 3
+        print(f"Self-check passed: your tests loaded {len(usable)} of {len(checked)} source files from this copy,")
+        print("and the test command fails when that code is broken.")
         if skipped:
             shown = ", ".join(skipped[:8]) + (f", and {len(skipped) - 8} more" if len(skipped) > 8 else "")
             print(f"Left out, because your tests did not load them from this copy: {shown}")

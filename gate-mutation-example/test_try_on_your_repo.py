@@ -440,3 +440,25 @@ def test_caught_by_names_the_test_behind_pytest_subtest_failures():
     assert tool.caught_by(fixture("pytest_subtests_fail_color.txt")) == (
         "tests/test_modern_word_boundary.py::ModernWordBoundaryTests::"
         "test_replacement_delimiters_are_budgeted_and_preserved")
+
+
+# 6. the test command must be able to FAIL (kept from the old self-check) ---------
+
+def test_a_test_command_that_always_exits_0_is_refused(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(MODULE)
+    (tmp_path / "test_calc.py").write_text(
+        "import unittest\nfrom calc import is_adult\n\n"
+        "class T(unittest.TestCase):\n"
+        "    def test_edges(self):\n"
+        "        self.assertTrue(is_adult(18))\n"
+        "        self.assertFalse(is_adult(17))\n")
+    # Loads and runs the tests, then ignores the result: exit code is always 0.
+    (tmp_path / "runner_test.py").write_text(
+        "import unittest\n"
+        "unittest.TextTestRunner().run(unittest.defaultTestLoader.discover('.', pattern='test_*.py'))\n")
+    before = snapshot(tmp_path)
+    assert tool.main([str(tmp_path), "--test", f"{sys.executable} runner_test.py"]) == 3
+    out = capsys.readouterr().out
+    assert "Self-check failed" in out and "still reports success" in out
+    assert not planted_lines(out)
+    assert snapshot(tmp_path) == before
