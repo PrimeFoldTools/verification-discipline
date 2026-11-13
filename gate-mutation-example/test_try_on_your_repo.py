@@ -432,3 +432,11 @@ def test_self_check_marker_goes_below_docstring_and_future_imports(tmp_path, cap
     assert tool.main([str(tmp_path), "--test", CMD]) == 0
     out = capsys.readouterr().out
     assert "loaded 1 of 1 source files" in out and "2 of 2 planted bugs caught" in out
+
+
+def test_caught_by_names_the_test_behind_pytest_subtest_failures():
+    # Real output of python-slugify's suite (its pyproject sets --color=yes, which beats
+    # NO_COLOR) under pytest 9.2.0, whose built-in subtests report `SUBFAILED(params) id`.
+    assert tool.caught_by(fixture("pytest_subtests_fail_color.txt")) == (
+        "tests/test_modern_word_boundary.py::ModernWordBoundaryTests::"
+        "test_replacement_delimiters_are_budgeted_and_preserved")

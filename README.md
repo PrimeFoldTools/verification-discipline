@@ -2,7 +2,7 @@
 
 A runnable gate that proves its own tests can fail, and a command that checks whether yours can. For anyone running AI coding agents.
 
-![A real run: 8 bugs planted in a copy of the example project, 7 caught by its tests](assets/try-on-your-repo-run.png)
+![A real run: 8 bugs planted in a copy of the example project, 7 caught by its tests, each with the test that caught it](assets/try-on-your-repo-run.png)
 
 I run a fleet of coding agents that ship real work. They are capable and confident,
 which is exactly what a wrong answer also looks like. So most of what I actually build

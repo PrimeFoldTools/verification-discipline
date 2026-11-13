@@ -210,8 +210,11 @@ def caught_by(output: str) -> str:
     names = [f"{m.group(3)}" if m.group(3).endswith("." + m.group(2)) else f"{m.group(3)}.{m.group(2)}"
              for m in re.finditer(r"^(FAIL|ERROR): (\S+) \(([^)]+)\)", output, re.M)]      # unittest
     if not names:
-        names = [m.group(1) for m in re.finditer(                                          # pytest
-            r"^(?:FAILED|ERROR) ((?:\S+::|\S+\.py).*?)(?: - .*)?$", output, re.M)]
+        # pytest: `FAILED id - msg`, `ERROR id - msg`, and for failed subtests
+        # `SUBFAILED(params) id - msg` (one line per subtest, so de-duplicate the ids)
+        names = list(dict.fromkeys(m.group(1) for m in re.finditer(
+            r"^(?:FAILED|ERROR|SUB(?:FAILED|FAIL|ERROR)(?:\(.*?\))?) ((?:\S+::|\S+\.py).*?)(?: - .*)?$",
+            output, re.M)))
     if not names:
         return "(test name not in output)"
     return names[0] + (f" (+{len(names) - 1} more)" if len(names) > 1 else "")
