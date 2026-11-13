@@ -1,0 +1,21 @@
+EF
+======================================================================
+ERROR: test_boom (test_ut.T)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-collinnerdahl/cb017d4f-0caf-46f8-b5c0-a4dacc6e7cb6/scratchpad/cap/ok/test_ut.py", line 8, in test_boom
+    raise RuntimeError("x")
+RuntimeError: x
+
+======================================================================
+FAIL: test_edges (test_ut.T)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-collinnerdahl/cb017d4f-0caf-46f8-b5c0-a4dacc6e7cb6/scratchpad/cap/ok/test_ut.py", line 6, in test_edges
+    self.assertTrue(is_adult(17))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+FAILED (failures=1, errors=1)

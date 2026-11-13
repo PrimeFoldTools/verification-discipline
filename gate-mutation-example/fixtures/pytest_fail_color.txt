@@ -1,0 +1,15 @@
+[31mF[0m
+=================================== FAILURES ===================================
+[31m[1m__________________________________ test_edges __________________________________[0m
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_edges[39;49;00m():[90m[39;49;00m
+        [94massert[39;49;00m is_adult([94m18[39;49;00m) [95mis[39;49;00m [94mTrue[39;49;00m[90m[39;49;00m
+>       [94massert[39;49;00m is_adult([94m17[39;49;00m) [95mis[39;49;00m [94mTrue[39;49;00m[90m[39;49;00m
+[1m[31mE       assert False is True[0m
+[1m[31mE        +  where False = is_adult(17)[0m
+
+[1m[31mtest_calc.py[0m:5: AssertionError
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test_calc.py::[1mtest_edges[0m - assert False is True
+[31m!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m[31m[1m1 failed[0m[31m in 0.03s[0m[0m

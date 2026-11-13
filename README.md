@@ -56,7 +56,7 @@ Can your tests fail? This plants small bugs, one at a time, in a copy of your pr
 python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --test "python3 -m pytest -q -x"
 ```
 
-First it runs a self-check: it breaks every source file in the copy and makes sure your tests notice. If they don't, your tests aren't loading that code (often because the project is installed as a package), and it stops instead of giving you a misleading report.
+First it runs a self-check: it adds one line to each source file in the copy that records the file's path when Python loads it, and checks which files your tests really loaded from the copy. Files they load from somewhere else (often an installed package) or never load are left out and named in the report, because bugs planted there would look like survivors. If no file loads from the copy, it stops instead of giving you a misleading report.
 
 Just changed some code, or your agent did? Check only those lines:
 
@@ -66,7 +66,7 @@ python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --change
 
 `--changed` plants bugs only in lines changed since your last commit (or since any git ref: `--changed main`). Each CAUGHT line names the test that caught it, when pytest or unittest reports one.
 
-Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line points at code your tests do not check. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
+Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line points at code your tests do not check. A BROKE line means the planted bug made the code fail to compile or import; that is a crash, not a test noticing, so it is not counted. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
 
 It is a two-minute smoke check, not full mutation testing. For that, use [mutmut](https://github.com/boxed/mutmut). Python only, standard library only.
 
