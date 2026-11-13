@@ -83,3 +83,21 @@ def test_test_files_are_never_mutated():
     assert tool.is_test_file("tests/test_x.py")
     assert tool.is_test_file("pkg/conftest.py")
     assert not tool.is_test_file("pkg/core.py")
+
+
+NO_IMPORT = ("def test_nothing():\n"
+             "    assert 1 + 1 == 2\n")
+
+
+def test_self_check_stops_when_tests_do_not_load_the_copy(tmp_path, capsys):
+    proj = make_project(tmp_path, NO_IMPORT)
+    before = snapshot(proj)
+    assert tool.main([str(proj), "--test", CMD]) == 3
+    assert "Self-check failed" in capsys.readouterr().out
+    assert snapshot(proj) == before
+
+
+def test_self_check_passes_when_tests_import_the_code(tmp_path, capsys):
+    proj = make_project(tmp_path, WEAK)
+    tool.main([str(proj), "--test", CMD])
+    assert "Self-check passed" in capsys.readouterr().out

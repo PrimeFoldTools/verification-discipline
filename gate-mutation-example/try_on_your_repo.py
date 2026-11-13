@@ -160,8 +160,31 @@ def main(argv: list[str] | None = None) -> int:
         if run_tests(a.test, root, a.timeout) != "pass":
             print("Your tests do not pass on the unchanged copy. Fix that first, then run this again.")
             return 2
+        files = source_files(root, a.paths)
+        # Self-check: break every source file in the copy at once. If the tests
+        # still pass, they are not loading this copy (an installed package, or
+        # tests that never import the code), and every planted bug would look
+        # like it survived. Stop instead of reporting that.
+        saved = {}
+        for rel in files:
+            path = os.path.join(root, rel)
+            with open(path, "rb") as f:
+                saved[path] = f.read()
+            with open(path, "wb") as f:
+                f.write(b'raise ImportError("try_on_your_repo self-check")\n' + saved[path])
+        loads_copy = run_tests(a.test, root, a.timeout) != "pass"
+        for path, data in saved.items():
+            with open(path, "wb") as f:
+                f.write(data)
+        if not files or not loads_copy:
+            print("Self-check failed: your tests still pass with every source file broken.")
+            print("They are not loading the code in this copy. Common causes: the project is")
+            print("installed as a package (pip install / pip install -e), or the tests never")
+            print("import it. Run your tests against the source folder, then try again.")
+            return 3
+        print("Self-check passed: your tests load the code in this copy.")
         all_sites: list[Site] = []
-        for rel in source_files(root, a.paths):
+        for rel in files:
             with open(os.path.join(root, rel), encoding="utf-8", errors="surrogateescape") as f:
                 all_sites += sites_in(rel, f.read())
         if not all_sites:
@@ -187,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {verdict:<8}  {s.path}:{s.line}  {s.before}  ->  {s.after}")
         print(f"\n{caught} of {len(picks)} planted bugs caught.  ({time.time() - t0:.0f}s)")
         if caught < len(picks):
-            print("Each SURVIVED line is a change your tests did not notice. Look at that line first.")
+            print("SURVIVED means your tests never checked that line. It is not always a bug;")
+            print("it is where to look first.")
         return 0
     finally:
         shutil.rmtree(work, ignore_errors=True)
