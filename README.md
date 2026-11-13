@@ -1,5 +1,9 @@
 # verification-discipline
 
+A runnable gate that proves its own tests can fail, and a command that checks whether yours can. For anyone running AI coding agents.
+
+![A real run: 8 bugs planted in a copy of the example project, 7 caught by its tests](assets/try-on-your-repo-run.png)
+
 I run a fleet of coding agents that ship real work. They are capable and confident,
 which is exactly what a wrong answer also looks like. So most of what I actually build
 is the machinery that assumes the agents are lying until proven otherwise.
@@ -36,14 +40,34 @@ willingness — not any single green check — is the thing on offer.
 
 ```
 cd gate-mutation-example
-make test        # 9 tests, offline, fake client
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+make test        # 15 tests, offline, fake client
 make mutations   # 4 seeded bugs, each caught, files restored byte-for-byte
 ```
 
 Requires Python 3 and `pytest`. Nothing here touches a network or a private store.
+
+## Try it on your own project
+
+Can your tests fail? This plants small bugs, one at a time, in a copy of your project and runs your tests after each one. Your own files are never touched.
+
+```
+python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --test "python3 -m pytest -q -x"
+```
+
+Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line points at code your tests do not check. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
+
+It is a two-minute smoke check, not full mutation testing. For that, use [mutmut](https://github.com/boxed/mutmut). Python only, standard library only.
 
 ## Licensing
 
 Code (anything under `gate-mutation-example/`) is MIT — see [LICENSE](LICENSE).
 Prose (the case study, the excerpts, this README) is not open-licensed — see
 [LICENSE-CONTENT.md](LICENSE-CONTENT.md).
+
+## Want this on your own setup?
+
+- [Andon](https://github.com/PrimeFoldTools/andon): the installable version of this discipline for Claude Code and Codex.
+- [primefold.tools](https://primefold.tools): what we build.
+- Send us one incident: what your agent claimed, and what was true. The first three are free. primefoldtools@gmail.com
