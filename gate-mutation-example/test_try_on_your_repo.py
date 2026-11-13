@@ -176,3 +176,13 @@ def test_report_names_the_test_that_caught_it(tmp_path, capsys):
 def test_caught_by_parses_unittest_and_falls_back():
     assert tool.caught_by("FAIL: test_x (pkg.test_mod.T)\n") == "pkg.test_mod.T.test_x"
     assert tool.caught_by("something else") == "(test name not in output)"
+
+
+@needs_git
+def test_changed_handles_a_file_name_with_a_space(tmp_path):
+    (tmp_path / "my file.py").write_text("def f(a):\n    return a == 1\n")
+    for cmd in (["init", "-q"], ["add", "."],
+                ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "x"]):
+        subprocess.run(["git", "-C", str(tmp_path), *cmd], check=True)
+    (tmp_path / "my file.py").write_text("def f(a):\n    return a == 2\n")
+    assert tool.changed_lines(str(tmp_path), "HEAD") == {"my file.py": {2}}

@@ -146,7 +146,8 @@ def changed_lines(project: str, ref: str) -> dict[str, set[int]] | str:
     """Lines added or changed since `ref` (plus new untracked .py files), keyed by
     path relative to `project`. Returns an error message string on failure."""
     def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["git", "-C", project, *args], capture_output=True, text=True)
+        return subprocess.run(["git", "-c", "core.quotepath=off", "-C", project, *args],
+                              capture_output=True, text=True)
     try:
         if git("rev-parse", "--is-inside-work-tree").returncode != 0:
             return f"--changed needs a git repository, and {project} is not one."
@@ -159,7 +160,8 @@ def changed_lines(project: str, ref: str) -> dict[str, set[int]] | str:
     path = None
     for line in diff.stdout.splitlines():
         if line.startswith("+++ "):
-            path = None if line[4:] == "/dev/null" else line[6:] if line[4:6] == "b/" else line[4:]
+            name = line[4:].rstrip("\t")        # git adds a tab after names with spaces
+            path = None if name == "/dev/null" else name[2:] if name.startswith("b/") else name
         elif line.startswith("@@") and path:
             m = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
             if m:

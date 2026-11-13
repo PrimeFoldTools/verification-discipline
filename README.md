@@ -42,7 +42,7 @@ willingness — not any single green check — is the thing on offer.
 cd gate-mutation-example
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-make test        # 23 tests, offline, fake client
+make test        # 24 tests, offline, fake client
 make mutations   # 4 seeded bugs, each caught, files restored byte-for-byte
 ```
 
@@ -64,7 +64,7 @@ Just changed some code, or your agent did? Check only those lines:
 python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --changed
 ```
 
-`--changed` plants bugs only in lines changed since your last commit (or since any git ref: `--changed main`). Every CAUGHT line names the test that caught it.
+`--changed` plants bugs only in lines changed since your last commit (or since any git ref: `--changed main`). Each CAUGHT line names the test that caught it, when pytest or unittest reports one.
 
 Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line points at code your tests do not check. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
 
