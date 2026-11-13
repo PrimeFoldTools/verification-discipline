@@ -17,8 +17,8 @@ Traceback (most recent call last):
     suites = [self.loadTestsFromName(name, module) for name in names]
   File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py", line 154, in loadTestsFromName
     module = __import__(module_name)
-  File "/private/tmp/claude-501/-Users-collinnerdahl/cb017d4f-0caf-46f8-b5c0-a4dacc6e7cb6/scratchpad/cap/imp/test_ut.py", line 2, in <module>
+  File "/path/to/project/test_ut.py", line 2, in <module>
     from calc import is_adult
-  File "/private/tmp/claude-501/-Users-collinnerdahl/cb017d4f-0caf-46f8-b5c0-a4dacc6e7cb6/scratchpad/cap/imp/calc.py", line 3, in <module>
+  File "/path/to/project/calc.py", line 3, in <module>
     raise NameError("planted")
 NameError: planted
