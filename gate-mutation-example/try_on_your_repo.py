@@ -17,6 +17,7 @@ import argparse
 import ast
 import os
 import random
+import re
 import shlex
 import shutil
 import subprocess
@@ -119,14 +120,56 @@ def sites_in(rel: str, text: str) -> list[Site]:
     return found
 
 
-def run_tests(cmd: str, cwd: str, timeout: int) -> str:
+def run_tests(cmd: str, cwd: str, timeout: int) -> tuple[str, str]:
+    """Return ("pass" | "fail" | "timeout", combined output)."""
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     try:
-        r = subprocess.run(shlex.split(cmd), cwd=cwd, env=env, capture_output=True,
-                           text=True, timeout=timeout)
+        r = subprocess.run(shlex.split(cmd, posix=os.name != "nt"), cwd=cwd, env=env,
+                           capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return "timeout"
-    return "pass" if r.returncode == 0 else "fail"
+        return "timeout", ""
+    return ("pass" if r.returncode == 0 else "fail"), (r.stdout or "") + (r.stderr or "")
+
+
+def caught_by(output: str) -> str:
+    """Name the test that failed, from pytest or unittest output."""
+    m = re.search(r"^(?:FAILED|ERROR) (\S+)", output, re.M)          # pytest
+    if m:
+        return m.group(1)
+    m = re.search(r"^(?:FAIL|ERROR): (\S+) \(([^)]+)\)", output, re.M)  # unittest
+    if m:
+        return f"{m.group(2)}.{m.group(1)}"
+    return "(test name not in output)"
+
+
+def changed_lines(project: str, ref: str) -> dict[str, set[int]] | str:
+    """Lines added or changed since `ref` (plus new untracked .py files), keyed by
+    path relative to `project`. Returns an error message string on failure."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", project, *args], capture_output=True, text=True)
+    try:
+        if git("rev-parse", "--is-inside-work-tree").returncode != 0:
+            return f"--changed needs a git repository, and {project} is not one."
+    except FileNotFoundError:
+        return "--changed needs git, and git is not installed."
+    diff = git("diff", "-U0", "--no-color", "--relative", ref, "--", "*.py")
+    if diff.returncode != 0:
+        return f"git could not compare against '{ref}': {diff.stderr.strip()}"
+    out: dict[str, set[int]] = {}
+    path = None
+    for line in diff.stdout.splitlines():
+        if line.startswith("+++ "):
+            path = None if line[4:] == "/dev/null" else line[6:] if line[4:6] == "b/" else line[4:]
+        elif line.startswith("@@") and path:
+            m = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
+            if m:
+                start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+                out.setdefault(os.path.normpath(path), set()).update(range(start, start + count))
+    new = git("ls-files", "--others", "--exclude-standard", "--", "*.py")
+    for rel in new.stdout.splitlines():
+        with open(os.path.join(project, rel), encoding="utf-8", errors="surrogateescape") as f:
+            out[os.path.normpath(rel)] = set(range(1, len(f.read().splitlines()) + 1))
+    return out
 
 
 def apply(text: str, s: Site) -> str:
@@ -145,19 +188,30 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=int, default=120, help="seconds per test run (default 120)")
     p.add_argument("--seed", type=int, default=0, help="which bugs get picked (default 0)")
     p.add_argument("--paths", nargs="*", help="only plant bugs under these folders, e.g. src/")
+    p.add_argument("--changed", nargs="?", const="HEAD", metavar="REF",
+                   help="only plant bugs in lines changed since REF (default HEAD: your uncommitted edits)")
     a = p.parse_args(argv)
 
     src_root = os.path.abspath(a.project)
     if not os.path.isdir(src_root):
         print(f"Not a folder: {src_root}")
         return 64
+    only = None
+    if a.changed:
+        only = changed_lines(src_root, a.changed)
+        if isinstance(only, str):
+            print(only)
+            return 64
+        if not only:
+            print(f"Nothing changed in .py files since {a.changed}. Nothing to check.")
+            return 0
     work = tempfile.mkdtemp(prefix="try_on_your_repo_")
     root = os.path.join(work, "project")
     try:
         shutil.copytree(src_root, root, ignore=shutil.ignore_patterns(*SKIP_DIRS, "*.egg-info"))
         print(f"Working in a copy: {root}")
         t0 = time.time()
-        if run_tests(a.test, root, a.timeout) != "pass":
+        if run_tests(a.test, root, a.timeout)[0] != "pass":
             print("Your tests do not pass on the unchanged copy. Fix that first, then run this again.")
             return 2
         files = source_files(root, a.paths)
@@ -172,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
                 saved[path] = f.read()
             with open(path, "wb") as f:
                 f.write(b'raise ImportError("try_on_your_repo self-check")\n' + saved[path])
-        loads_copy = run_tests(a.test, root, a.timeout) != "pass"
+        loads_copy = run_tests(a.test, root, a.timeout)[0] != "pass"
         for path, data in saved.items():
             with open(path, "wb") as f:
                 f.write(data)
@@ -187,6 +241,11 @@ def main(argv: list[str] | None = None) -> int:
         for rel in files:
             with open(os.path.join(root, rel), encoding="utf-8", errors="surrogateescape") as f:
                 all_sites += sites_in(rel, f.read())
+        if only is not None:
+            all_sites = [s for s in all_sites if s.line in only.get(os.path.normpath(s.path), ())]
+            if not all_sites:
+                print(f"Your changes since {a.changed} have no spots to plant a bug in.")
+                return 0
         if not all_sites:
             print("No places found to plant a bug.")
             return 0
@@ -200,14 +259,15 @@ def main(argv: list[str] | None = None) -> int:
             text = original.decode("utf-8", errors="surrogateescape")
             with open(path, "wb") as f:
                 f.write(apply(text, s).encode("utf-8", errors="surrogateescape"))
-            result = run_tests(a.test, root, a.timeout)
+            result, output = run_tests(a.test, root, a.timeout)
             with open(path, "wb") as f:
                 f.write(original)
             with open(path, "rb") as f:
                 assert f.read() == original, f"restore not byte-identical: {s.path}"
             verdict = {"fail": "CAUGHT", "pass": "SURVIVED", "timeout": "TIMEOUT"}[result]
             caught += verdict == "CAUGHT"
-            print(f"  {verdict:<8}  {s.path}:{s.line}  {s.before}  ->  {s.after}")
+            by = f"   (by {caught_by(output)})" if verdict == "CAUGHT" else ""
+            print(f"  {verdict:<8}  {s.path}:{s.line}  {s.before}  ->  {s.after}{by}")
         print(f"\n{caught} of {len(picks)} planted bugs caught.  ({time.time() - t0:.0f}s)")
         if caught < len(picks):
             print("SURVIVED means your tests never checked that line. It is not always a bug;")

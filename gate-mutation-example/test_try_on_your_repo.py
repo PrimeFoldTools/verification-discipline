@@ -101,3 +101,78 @@ def test_self_check_passes_when_tests_import_the_code(tmp_path, capsys):
     proj = make_project(tmp_path, WEAK)
     tool.main([str(proj), "--test", CMD])
     assert "Self-check passed" in capsys.readouterr().out
+
+
+# --- --changed and "caught by" -------------------------------------------
+
+import shutil
+import subprocess
+
+import pytest
+
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+
+TWO = ("def is_adult(age):\n"
+       "    return age >= 18\n"
+       "\n"
+       "def is_senior(age):\n"
+       "    return age >= 65\n")
+TWO_TESTS = ("from calc import is_adult, is_senior\n\n"
+             "def test_adult():\n"
+             "    assert is_adult(18) is True\n"
+             "    assert is_adult(17) is False\n\n"
+             "def test_senior():\n"
+             "    assert is_senior(65) is True\n"
+             "    assert is_senior(64) is False\n")
+
+
+def git_project(tmp_path):
+    (tmp_path / "calc.py").write_text(TWO)
+    (tmp_path / "test_calc.py").write_text(TWO_TESTS)
+    for cmd in (["init", "-q"], ["add", "."],
+                ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "x"]):
+        subprocess.run(["git", "-C", str(tmp_path), *cmd], check=True)
+    return tmp_path
+
+
+@needs_git
+def test_changed_only_plants_in_changed_lines(tmp_path, capsys):
+    proj = git_project(tmp_path)
+    (proj / "calc.py").write_text(TWO.replace("age >= 65", "age >= 60"))
+    (proj / "test_calc.py").write_text(TWO_TESTS.replace("65", "60").replace("64", "59"))
+    assert tool.main([str(proj), "--test", CMD, "--changed"]) == 0
+    out = capsys.readouterr().out
+    planted = [l for l in out.splitlines() if l.strip().startswith(("CAUGHT", "SURVIVED"))]
+    assert planted and all("calc.py:5" in l for l in planted)
+
+
+@needs_git
+def test_changed_includes_new_untracked_file(tmp_path):
+    proj = git_project(tmp_path)
+    (proj / "extra.py").write_text("def flag():\n    return True\n")
+    only = tool.changed_lines(str(proj), "HEAD")
+    assert only == {"extra.py": {1, 2}}
+
+
+@needs_git
+def test_changed_with_nothing_changed(tmp_path, capsys):
+    proj = git_project(tmp_path)
+    assert tool.main([str(proj), "--test", CMD, "--changed"]) == 0
+    assert "Nothing changed" in capsys.readouterr().out
+
+
+def test_changed_outside_git_explains(tmp_path, capsys):
+    proj = make_project(tmp_path, STRONG)
+    assert tool.main([str(proj), "--test", CMD, "--changed"]) == 64
+    assert "needs a git repository" in capsys.readouterr().out
+
+
+def test_report_names_the_test_that_caught_it(tmp_path, capsys):
+    proj = make_project(tmp_path, STRONG)
+    tool.main([str(proj), "--test", CMD])
+    assert "(by test_calc.py::test_edges)" in capsys.readouterr().out
+
+
+def test_caught_by_parses_unittest_and_falls_back():
+    assert tool.caught_by("FAIL: test_x (pkg.test_mod.T)\n") == "pkg.test_mod.T.test_x"
+    assert tool.caught_by("something else") == "(test name not in output)"
