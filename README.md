@@ -60,6 +60,8 @@ Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `o
 
 It is a two-minute smoke check, not full mutation testing. For that, use [mutmut](https://github.com/boxed/mutmut). Python only, standard library only.
 
+Related tools for full mutation testing: [mutmut](https://github.com/boxed/mutmut) and [cosmic-ray](https://github.com/sixty-north/cosmic-ray) (Python), [Stryker](https://github.com/stryker-mutator/stryker-js) (JavaScript), [PIT](https://github.com/hcoles/pitest) (Java).
+
 ## Licensing
 
 Code (anything under `gate-mutation-example/`) is MIT — see [LICENSE](LICENSE).
