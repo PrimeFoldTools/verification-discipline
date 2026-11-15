@@ -8,7 +8,8 @@ pass), then plants one bug at a time: a flipped comparison, a swapped True/False
 runs your tests again. A failing run means your tests caught the bug. A passing
 run means the bug survived. Your own files are never touched.
 
-This is a two-minute smoke check, not full mutation testing. For that, use
+It runs your test command 3 times to check the setup, then once per planted bug:
+13 runs at the default of 10 bugs. This is a smoke check, not full mutation testing. For that, use
 mutmut: https://github.com/boxed/mutmut
 """
 from __future__ import annotations
@@ -29,6 +30,11 @@ from dataclasses import dataclass
 
 SKIP_DIRS = {".git", ".hg", ".venv", "venv", "env", ".tox", ".nox", "node_modules",
              "__pycache__", "build", "dist", ".mypy_cache", ".pytest_cache", ".eggs"}
+
+# Top-level folders that hold helper scripts, not the library. Bugs planted there make the
+# score look worse for a reason a reader would call unfair. Left out unless asked for.
+# (Only at the top: `mylib/tools/` is usually real code and is kept.)
+HELPER_DIRS = ("tools", "scripts", "docs", "examples", "benchmarks")
 
 FLIP = {ast.Eq: "!=", ast.NotEq: "==", ast.Lt: ">=", ast.GtE: "<",
         ast.Gt: "<=", ast.LtE: ">"}
@@ -78,8 +84,11 @@ def under(rel: str, only: list[str]) -> bool:
     return False
 
 
-def source_files(root: str, only: list[str] | None) -> list[str]:
-    out = []
+def source_files(root: str, only: list[str] | None,
+                 include_helpers: bool = False) -> tuple[list[str], list[str]]:
+    """The .py files to plant bugs in, and the helper folders left out (each with a trailing /).
+    A file named by `only` (--paths) is kept even inside a helper folder."""
+    out, left_out = [], []
     for d, dirs, files in os.walk(root):
         dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS and not x.endswith(".egg-info"))
         for f in sorted(files):
@@ -90,8 +99,15 @@ def source_files(root: str, only: list[str] | None) -> list[str]:
                 continue
             if only and not under(rel, only):
                 continue
+            top = rel.replace(os.sep, "/").split("/")
+            asked_for = any(os.path.normpath(x).replace(os.sep, "/").split("/")[0] == top[0]
+                            for x in only or [])        # `--paths tools/x.py`, not `--paths .`
+            if len(top) > 1 and top[0] in HELPER_DIRS and not include_helpers and not asked_for:
+                if top[0] + "/" not in left_out:
+                    left_out.append(top[0] + "/")
+                continue
             out.append(rel)
-    return out
+    return out, sorted(left_out)
 
 
 def sites_in(rel: str, text: str) -> list[Site]:
@@ -197,8 +213,9 @@ def run_tests(cmd: str, cwd: str, timeout: int) -> tuple[str, str]:
 
 
 def broke_import(output: str) -> bool:
-    """True if the run failed because the code could not be imported, not because a test
-    noticed a wrong result (pytest collection error, unittest import failure)."""
+    """True if the run failed in pytest's collection or unittest's loader, before any test ran.
+    (An import that fails INSIDE a test is told apart by the markers in the planted file,
+    not by reading tracebacks: see `with_marker` and `unfinished_loads`.)"""
     output = ANSI.sub("", output)
     return bool(re.search(r"^_+ ERROR collecting |during collection|Failed to import test module"
                           r"|unittest\.loader\._FailedTest|in loadTestsFromName", output, re.M))
@@ -267,17 +284,23 @@ def apply(text: str, s: Site) -> str:
     return "".join(lines)
 
 
-def marker_line(marker: str) -> str:
-    """One line that appends the module's own __file__ to `marker` when the module is loaded."""
+def marker_line(marker: str, kind: str) -> str:
+    """One line that appends a record to `marker` when the module runs it. `kind` "start":
+    "S <file>" (or "M <file>" when the file runs as a script, `__name__ == "__main__"`).
+    `kind` "end": "E <file>", not written for a script run (it usually exits before its last line)."""
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
-    return ('(lambda _o: (lambda _f: (_o.write(_f, (str(globals().get("__file__", "")) + "\\n")'
-            '.encode("utf-8", "surrogateescape")), _o.close(_f)))'
-            f'(_o.open({marker!r}, {flags})))(__import__("os"))\n')
+    tag = '("M " if _n == "__main__" else "S ")' if kind == "start" else '"E "'
+    write = (f'(lambda _f: (_o.write(_f, ({tag} + str(globals().get("__file__", "")) + "\\n")'
+             '.encode("utf-8", "surrogateescape")), _o.close(_f)))'
+             f'(_o.open({marker!r}, {flags}))')
+    if kind == "end":
+        write = f'({write} if _n != "__main__" else None)'
+    return f'(lambda _o, _n: {write})(__import__("os"), globals().get("__name__"))\n'
 
 
 def with_marker(text: str, marker: str) -> str | None:
-    """`text` with the marker line added after the docstring and `from __future__` imports
-    (a line above those is a SyntaxError). None if the file does not parse."""
+    """`text` with a start marker after the docstring and `from __future__` imports (a line above
+    those is a SyntaxError) and an end marker as the last line. None if the file does not parse."""
     try:
         body = ast.parse(text).body
     except (SyntaxError, ValueError, RecursionError):
@@ -294,8 +317,31 @@ def with_marker(text: str, marker: str) -> str | None:
             after += 1
     if after and not lines[after - 1].endswith(("\n", "\r")):
         lines[after - 1] += "\n"
-    lines.insert(after, marker_line(marker))
+    lines.insert(after, marker_line(marker, "start"))
+    if not lines[-1].endswith(("\n", "\r")):
+        lines[-1] += "\n"
+    lines.append(marker_line(marker, "end"))
     return "".join(lines)
+
+
+def marker_counts(marker: str, root: str) -> dict[str, dict[str, int]]:
+    """Read the marker file: per file (real path), how many times it started loading as an
+    import ("S"), ran as a script ("M"), and reached its last line when imported ("E")."""
+    out: dict[str, dict[str, int]] = {}
+    if os.path.exists(marker):
+        with open(marker, encoding="utf-8", errors="surrogateescape") as f:
+            for line in f.read().splitlines():
+                tag, _, name = line.partition(" ")
+                if tag in ("S", "M", "E") and name:
+                    key = os.path.normcase(os.path.realpath(os.path.join(root, name)))
+                    out.setdefault(key, {"S": 0, "M": 0, "E": 0})[tag] += 1
+    return out
+
+
+def unfinished_loads(counts: dict[str, dict[str, int]], path: str) -> bool:
+    """True if `path` started loading as an import more often than it reached its last line."""
+    c = counts.get(os.path.normcase(os.path.realpath(path)))
+    return bool(c) and c["S"] > c["E"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -306,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=int, default=120, help="seconds per test run (default 120)")
     p.add_argument("--seed", type=int, default=0, help="which bugs get picked (default 0)")
     p.add_argument("--paths", nargs="*", help="only plant bugs under these folders or files, e.g. src/")
+    p.add_argument("--include-helpers", action="store_true",
+                   help="also plant bugs in tools/, scripts/, docs/, examples/ and benchmarks/ (skipped by default)")
     p.add_argument("--changed", nargs="?", const="HEAD", metavar="REF",
                    help="only plant bugs in lines changed since REF (default HEAD: your uncommitted edits)")
     a = p.parse_args(argv)
@@ -340,7 +388,14 @@ def main(argv: list[str] | None = None) -> int:
             for line in output.strip().splitlines()[-20:]:
                 print(f"    {line}")
             return 2
-        files = source_files(root, a.paths)
+        files, helper_dirs = source_files(root, a.paths, a.include_helpers)
+        if helper_dirs:
+            print(f"Skipped helper folders: {', '.join(helper_dirs)} (helper scripts, not your library). "
+                  "Add --include-helpers to plant bugs there too.")
+        if not files and helper_dirs:
+            print("Nothing was checked: every source file is in those folders. Add --include-helpers,")
+            print("or name the files with --paths, to check them.")
+            return 4
         # Self-check, per file: add one line to each source file that records the
         # file's own path when Python loads it, run the tests, and see which files
         # the tests really loaded FROM THIS COPY. A file loaded from somewhere else
@@ -367,15 +422,19 @@ def main(argv: list[str] | None = None) -> int:
             for line in check_output.strip().splitlines()[-20:]:
                 print(f"    {line}")
             return 3
-        loaded: set[str] = set()
-        if os.path.exists(marker):
-            with open(marker, encoding="utf-8", errors="surrogateescape") as f:
-                for line in f.read().splitlines():
-                    loaded.add(os.path.normcase(os.path.realpath(os.path.join(root, line))))
+        counts = marker_counts(marker, root)
         checked = [rel for rel in files if os.path.join(root, rel) in saved]
-        usable = [rel for rel in checked
-                  if os.path.normcase(os.path.realpath(os.path.join(root, rel))) in loaded]
-        skipped = [rel for rel in checked if rel not in usable]
+        loaded = [rel for rel in checked
+                  if os.path.normcase(os.path.realpath(os.path.join(root, rel))) in counts]
+        # Calibration: on this passing run, a file that starts loading but does not reach its last
+        # line (an import that fails and is caught, an exit at import) cannot be judged later.
+        unfinished = [rel for rel in loaded if unfinished_loads(counts, os.path.join(root, rel))]
+        usable = [rel for rel in loaded if rel not in unfinished]
+        skipped = [rel for rel in checked if rel not in loaded]
+        if not usable and unfinished and not skipped:
+            print("Self-check failed: no source file your tests load reaches its last line when loaded.")
+            print("Left out: " + ", ".join(unfinished[:8]))
+            return 3
         if not usable:
             print("Self-check failed: your tests did not load any source file from this copy.")
             print("Common causes: the project is installed as a package (pip install / pip install -e),")
@@ -406,6 +465,11 @@ def main(argv: list[str] | None = None) -> int:
             shown = ", ".join(skipped[:8]) + (f", and {len(skipped) - 8} more" if len(skipped) > 8 else "")
             print(f"Left out, because your tests did not load them from this copy: {shown}")
             print("(Either the tests never import them, or they load another copy, e.g. an installed package.)")
+        if unfinished:
+            shown = ", ".join(unfinished[:8]) + (f", and {len(unfinished) - 8} more" if len(unfinished) > 8 else "")
+            print(f"Left out, because they do not reach their last line when your tests load them: {shown}")
+            print("(An import that fails and is caught, or an exit at import. A later failure could not be told")
+            print("apart from a broken import.)")
         all_sites: list[Site] = []
         for rel in usable:
             all_sites += sites_in(rel, read_text(os.path.join(root, rel)))
@@ -418,7 +482,7 @@ def main(argv: list[str] | None = None) -> int:
             print("No places found to plant a bug.")
             return 0
         picks = random.Random(a.seed).sample(all_sites, min(a.max, len(all_sites)))
-        caught = counted = broke = 0
+        caught = counted = broke = timed_out = 0
         print(f"Planting {len(picks)} bugs, one at a time (out of {len(all_sites)} possible spots):\n")
         for s in picks:
             path = os.path.join(root, s.path)
@@ -433,8 +497,16 @@ def main(argv: list[str] | None = None) -> int:
             except (SyntaxError, RecursionError):
                 verdict, note = "BROKE", "   (did not compile)"
             else:
+                marked = with_marker(mutant, marker)
+                if marked is not None:
+                    try:
+                        compile(marked, s.path, "exec")
+                    except (SyntaxError, RecursionError):
+                        marked = None
+                if os.path.exists(marker):
+                    os.remove(marker)            # counts are per run
                 with open(path, "wb") as f:
-                    f.write(mutant.encode("utf-8", errors="surrogateescape"))
+                    f.write((marked if marked is not None else mutant).encode("utf-8", errors="surrogateescape"))
                 try:
                     result, output = run_tests(a.test, root, a.timeout)
                 finally:
@@ -443,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
                 with open(path, "rb") as f:
                     if f.read() != original:
                         raise RuntimeError(f"restore not byte-identical: {s.path}")
-                if result == "fail" and broke_import(output):
+                never_finished = marked is not None and unfinished_loads(marker_counts(marker, root), path)
+                if result == "fail" and (never_finished or broke_import(output)):
                     verdict, note = "BROKE", "   (broke the import)"
                 else:
                     verdict = {"fail": "CAUGHT", "pass": "SURVIVED", "timeout": "TIMEOUT"}[result]
@@ -454,14 +527,20 @@ def main(argv: list[str] | None = None) -> int:
             if verdict in ("CAUGHT", "SURVIVED", "TIMEOUT"):
                 counted += 1
             caught += verdict == "CAUGHT"
+            timed_out += verdict == "TIMEOUT"
             print(f"  {verdict:<8}  {s.path}:{s.line}  {s.before}  ->  {s.after}{note}")
         print(f"\n{caught} of {counted} planted bugs caught.  ({time.time() - t0:.0f}s)")
         if broke:
             print(f"{broke} more broke the code instead of changing what it does (it did not compile, or it")
             print("could not be imported). A crash is not a test noticing a bug, so those are not counted.")
+        if timed_out:
+            print(f"A TIMEOUT line means your tests did not finish within {a.timeout} seconds with that bug planted,")
+            print("so the tool stopped them. It counts toward the total but not as caught. A bug that makes")
+            print("the code loop forever is a common cause. If your tests are just slow, raise --timeout.")
         if caught < counted:
-            print("SURVIVED means your tests never checked that line. It is not always a bug;")
-            print("it is where to look first.")
+            print("SURVIVED means the test command passed with the bug planted. The line may run in your tests")
+            print("with nothing checking its result, or the change may have no visible effect. It is not")
+            print("always a flaw; it is where to look first.")
         return 0
     finally:
         shutil.rmtree(work, ignore_errors=True)

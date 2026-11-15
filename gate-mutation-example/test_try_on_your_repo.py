@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 import try_on_your_repo as tool
@@ -462,3 +463,295 @@ def test_a_test_command_that_always_exits_0_is_refused(tmp_path, capsys):
     assert "Self-check failed" in out and "still reports success" in out
     assert not planted_lines(out)
     assert snapshot(tmp_path) == before
+
+
+# 7. helper-script folders are skipped by default --------------------------------
+
+def helper_project(tmp_path):
+    """calc.py is the library; tools/helper.py is a helper script the tests also load.
+    pkg/tools/inner.py is a real sub-package that happens to be called tools."""
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "pkg" / "tools").mkdir(parents=True)
+    (tmp_path / "calc.py").write_text(MODULE)
+    (tmp_path / "tools" / "helper.py").write_text("def big(n):\n    return n > 100\n")
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "tools" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "tools" / "inner.py").write_text("def small(n):\n    return n < 5\n")
+    (tmp_path / "test_x.py").write_text(
+        "import os, sys\nsys.path[:0] = [os.path.join(os.path.dirname(__file__), 'tools')]\n"
+        "from calc import is_adult\nfrom helper import big\nfrom pkg.tools.inner import small\n\n"
+        "def test_all():\n"
+        "    assert is_adult(18) is True and is_adult(17) is False\n"
+        "    assert big(101) is True and big(100) is False\n"
+        "    assert small(4) is True and small(5) is False\n")
+    return tmp_path
+
+
+def test_helper_folders_are_skipped_by_default_and_named(tmp_path, capsys):
+    proj = helper_project(tmp_path)
+    assert tool.main([str(proj), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert planted_lines(out), out
+    assert not any("tools/helper.py" in l for l in planted_lines(out)), out
+    assert any("pkg/tools/inner.py" in l for l in planted_lines(out)), out   # not a top-level helper folder
+    assert "Skipped helper folders: tools/" in out and "--include-helpers" in out, out
+    assert "pkg/tools" not in out.split("Skipped helper folders")[1].splitlines()[0], out
+
+
+def test_include_helpers_flag_plants_in_them_again(tmp_path, capsys):
+    proj = helper_project(tmp_path)
+    assert tool.main([str(proj), "--test", CMD, "--max", "50", "--include-helpers"]) == 0
+    out = capsys.readouterr().out
+    assert any("tools/helper.py" in l for l in planted_lines(out)), out
+    assert "Skipped helper folders" not in out
+
+
+def test_an_explicit_path_inside_a_helper_folder_still_works(tmp_path, capsys):
+    proj = helper_project(tmp_path)
+    assert tool.main([str(proj), "--test", CMD, "--max", "50", "--paths", "tools/helper.py"]) == 0
+    out = capsys.readouterr().out
+    assert planted_lines(out) and all("tools/helper.py" in l for l in planted_lines(out)), out
+
+
+def test_nothing_is_said_about_helper_folders_when_there_are_none(tmp_path, capsys):
+    proj = make_project(tmp_path, STRONG)
+    assert tool.main([str(proj), "--test", CMD]) == 0
+    assert "helper" not in capsys.readouterr().out
+
+
+def test_a_broad_path_like_dot_does_not_switch_helper_folders_back_on(tmp_path, capsys):
+    proj = helper_project(tmp_path)
+    assert tool.main([str(proj), "--test", CMD, "--max", "50", "--paths", "."]) == 0
+    out = capsys.readouterr().out
+    assert planted_lines(out) and not any("tools/helper.py" in l for l in planted_lines(out)), out
+    assert "Skipped helper folders: tools/" in out
+
+
+# 8. an import that fails INSIDE a test function is BROKE, not CAUGHT (end-to-end runs) -----
+
+
+
+
+
+
+
+
+
+LAZY_TEST = ("def test_edges():\n"
+             "    from calc import is_adult\n"
+             "    assert is_adult(18) is True\n"
+             "    assert is_adult(17) is False\n")
+LAZY_UNITTEST = ("import unittest\n\n"
+                 "class T(unittest.TestCase):\n"
+                 "    def test_edges(self):\n"
+                 "        from calc import is_adult\n"
+                 "        self.assertTrue(is_adult(18))\n"
+                 "        self.assertFalse(is_adult(17))\n")
+
+
+def test_a_mutant_that_breaks_a_lazy_import_shows_as_broke_with_pytest(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(IMPORT_BREAKER)
+    (tmp_path / "test_calc.py").write_text(LAZY_TEST)
+    assert tool.main([str(tmp_path), "--test", CMD]) == 0
+    out = capsys.readouterr().out
+    lines = planted_lines(out)
+    assert any(l.split()[0] == "BROKE" and "calc.py:1" in l for l in lines), out
+    assert not any(l.split()[0] == "CAUGHT" and "calc.py:1" in l for l in lines), out
+    assert "2 of 2 planted bugs caught" in out
+
+
+def test_a_mutant_that_breaks_a_lazy_import_shows_as_broke_with_unittest(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(IMPORT_BREAKER)
+    (tmp_path / "test_calc.py").write_text(LAZY_UNITTEST)
+    assert tool.main([str(tmp_path), "--test", f"{sys.executable} -m unittest -q"]) == 0
+    out = capsys.readouterr().out
+    lines = planted_lines(out)
+    assert any(l.split()[0] == "BROKE" and "calc.py:1" in l for l in lines), out
+    assert not any(l.split()[0] == "CAUGHT" and "calc.py:1" in l for l in lines), out
+
+
+def test_a_real_catch_after_a_lazy_import_still_counts(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(MODULE)
+    (tmp_path / "test_calc.py").write_text(LAZY_TEST)
+    assert tool.main([str(tmp_path), "--test", CMD]) == 0
+    out = capsys.readouterr().out
+    assert "2 of 2 planted bugs caught" in out and "BROKE" not in out, out
+
+
+# 9. the report explains TIMEOUT ------------------------------------------------
+
+def run_with_timeouts_after_setup(monkeypatch, setup_runs=3):
+    """Real test runs for the baseline and the two self-check runs; every run after that times out."""
+    real, calls = tool.run_tests, []
+
+    def fake(cmd, cwd, timeout):
+        calls.append(cmd)
+        return real(cmd, cwd, timeout) if len(calls) <= setup_runs else ("timeout", "")
+    monkeypatch.setattr(tool, "run_tests", fake)
+
+
+def test_the_report_explains_timeout_when_one_happened(tmp_path, capsys, monkeypatch):
+    proj = make_project(tmp_path, STRONG)
+    run_with_timeouts_after_setup(monkeypatch)
+    assert tool.main([str(proj), "--test", CMD, "--timeout", "7"]) == 0
+    out = capsys.readouterr().out
+    assert [l.split()[0] for l in planted_lines(out) if "->" in l] == ["TIMEOUT", "TIMEOUT"], out
+    assert "A TIMEOUT line means your tests did not finish within 7 seconds" in out, out
+    assert "counts toward the total but not as caught" in out, out
+    assert "0 of 2 planted bugs caught" in out
+
+
+def test_the_report_is_silent_about_timeout_when_none_happened(tmp_path, capsys):
+    proj = make_project(tmp_path, STRONG)
+    assert tool.main([str(proj), "--test", CMD]) == 0
+    assert "TIMEOUT" not in capsys.readouterr().out
+
+
+
+
+
+
+
+
+
+# 11. a project whose only source files are in helper folders ------------------------
+
+def test_a_project_with_only_helper_folder_code_says_so_instead_of_blaming_installation(tmp_path, capsys):
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "helper.py").write_text("def big(n):\n    return n > 100\n")
+    (tmp_path / "test_x.py").write_text(
+        "import os, sys\nsys.path[:0] = [os.path.join(os.path.dirname(__file__), 'tools')]\n"
+        "from helper import big\n\ndef test_big():\n    assert big(101) is True and big(100) is False\n")
+    assert tool.main([str(tmp_path), "--test", CMD]) == 4
+    out = capsys.readouterr().out
+    assert "Skipped helper folders: tools/" in out and "--include-helpers" in out, out
+    assert "Nothing was checked" in out and "installed as a package" not in out and "Self-check failed" not in out, out
+    assert not planted_lines(out), out
+    assert tool.main([str(tmp_path), "--test", CMD, "--include-helpers"]) == 0   # and the flag works
+    assert any("tools/helper.py" in l for l in planted_lines(capsys.readouterr().out))
+
+
+# 12. the test counts quoted in the READMEs are the real ones -------------------------
+
+def collected(*files):
+    out = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *files],
+                         cwd=Path(__file__).parent, capture_output=True, text=True,
+                         env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")).stdout
+    return int(re.search(r"(\d+) tests? collected", out).group(1))
+
+
+def test_the_test_counts_in_the_readmes_are_the_real_counts():
+    here = Path(__file__).parent
+    total, gate, tool_n = collected(), collected("test_cli.py"), collected("test_try_on_your_repo.py")
+    assert total == gate + tool_n
+    # The repo's top README is absent when the tool runs this suite in a copy of this folder.
+    readmes = [p for p in (here / "README.md", here.parent / "README.md") if p.exists()]
+    assert readmes
+    for readme in readmes:
+        line = next(l for l in readme.read_text(encoding="utf-8").splitlines() if l.startswith("make test"))
+        assert f"# {total} tests" in line and f"{gate} on the gate" in line \
+            and f"{tool_n} on try_on_your_repo.py" in line, (readme.name, line, total, gate, tool_n)
+    if (here.parent / "README.md").exists():
+        assert f"all {total} tests pass" in (here.parent / "README.md").read_text(encoding="utf-8")
+
+
+# 13. BROKE = the planted file started loading and never finished (audit, 2026-11-13) ----
+# Nothing here reads tracebacks, so the verdict does not depend on pytest's --tb, on how the
+# test imports the module, or on unittest vs pytest. These are real runs, not captured text.
+
+SAME_LINE = "def calc(n):\n    if n > 0:\n        return 10 / n\n    return 0\n"
+ALIAS_SRC = "if 1 > 0:\n    X = 10\nY = X\n"
+
+
+def lines_for(out, src_line):
+    return [l.split()[0] for l in planted_lines(out) if f"calc.py:{src_line} " in l]
+
+
+def test_a_crash_inside_a_function_on_the_import_line_is_still_caught(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(SAME_LINE)
+    (tmp_path / "test_calc.py").write_text(
+        "import importlib\n\ndef test_calc():\n    assert importlib.import_module('calc').calc(0) == 0\n")
+    assert tool.main([str(tmp_path), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert lines_for(out, 2) == ["CAUGHT"] and "BROKE" not in out, out      # `>` -> `<=` divides by zero in calc()
+    assert "2 of 3 planted bugs caught" in out, out
+
+
+def test_an_import_crash_through_an_alias_is_broke(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(ALIAS_SRC)
+    (tmp_path / "test_calc.py").write_text(
+        "from importlib import import_module as load\n\ndef test_calc():\n    assert load('calc').Y == 10\n")
+    assert tool.main([str(tmp_path), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert lines_for(out, 1) == ["BROKE"], out
+    assert "0 of 0 planted bugs caught" in out, out
+
+
+def test_an_import_crash_is_broke_even_with_no_traceback_at_all(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(ALIAS_SRC)
+    (tmp_path / "test_calc.py").write_text("def test_calc():\n    import calc\n    assert calc.Y == 10\n")
+    assert tool.main([str(tmp_path), "--test", CMD + " --tb=no -x", "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert lines_for(out, 1) == ["BROKE"], out
+
+
+def test_an_import_crash_through_an_alias_is_broke_with_unittest(tmp_path, capsys):
+    (tmp_path / "calc.py").write_text(ALIAS_SRC)
+    (tmp_path / "test_calc.py").write_text(
+        "import unittest\nfrom importlib import import_module as load\n\n"
+        "class T(unittest.TestCase):\n    def test_calc(self):\n        self.assertEqual(load('calc').Y, 10)\n")
+    assert tool.main([str(tmp_path), "--test", f"{sys.executable} -m unittest -q", "--max", "50"]) == 0
+    assert lines_for(capsys.readouterr().out, 1) == ["BROKE"]
+
+
+def test_a_project_with_only_helper_folder_code_exits_nonzero_and_says_nothing_was_checked(tmp_path, capsys):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "calc.py").write_text("def calc(n):\n    return n > 0\n")
+    (tmp_path / "test_calc.py").write_text(
+        "from scripts.calc import calc\n\ndef test_calc():\n    assert calc(1) is True\n    assert calc(0) is False\n")
+    assert tool.main([str(tmp_path), "--test", CMD]) == 4
+    out = capsys.readouterr().out
+    assert "Nothing was checked" in out and "--include-helpers" in out and not planted_lines(out), out
+
+
+CLI_SRC = ("import sys\n\ndef main():\n    n = int(sys.argv[1])\n    if n >= 18:\n"
+           "        print('adult')\n        return 0\n    print('minor')\n    return 1\n\n"
+           "if __name__ == '__main__':\n    sys.exit(main())\n")
+CLI_TEST = ("import os, subprocess, sys\nHERE = os.path.dirname(os.path.abspath(__file__))\n\n"
+            "def run(n):\n    return subprocess.run([sys.executable, os.path.join(HERE, 'cli.py'), str(n)],\n"
+            "                          capture_output=True, text=True)\n\n"
+            "def test_adult():\n    r = run(18)\n    assert r.returncode == 0 and 'adult' in r.stdout\n\n"
+            "def test_minor():\n    r = run(17)\n    assert r.returncode == 1\n")
+
+
+def test_a_script_run_as_main_is_still_tested_and_a_real_catch_is_not_called_broke(tmp_path, capsys):
+    (tmp_path / "cli.py").write_text(CLI_SRC)
+    (tmp_path / "test_cli_main.py").write_text(CLI_TEST)
+    assert tool.main([str(tmp_path), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert "loaded 1 of 1 source files" in out and "Left out" not in out, out
+    assert lines_for(out.replace("cli.py", "calc.py"), 5) == ["CAUGHT"], out     # `>=` -> `<`
+    assert "BROKE" not in out, out
+
+
+def test_a_file_that_does_not_reach_its_last_line_when_loaded_is_left_out_by_name(tmp_path, capsys):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text(
+        "try:\n    from . import _speedups\nexcept ImportError:\n    _speedups = None\n\n"
+        "def add(a, b):\n    return a + b if a > 0 else b\n")
+    (tmp_path / "pkg" / "_speedups.py").write_text("if 1 > 0:\n    raise ImportError('no compiled extension')\n")
+    (tmp_path / "test_pkg.py").write_text(
+        "import pkg\n\ndef test_add():\n    assert pkg.add(1, 2) == 3\n    assert pkg.add(-1, 2) == 2\n")
+    assert tool.main([str(tmp_path), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert "do not reach their last line" in out and "pkg/_speedups.py" in out.split("Left out")[1], out
+    assert not any("_speedups.py:" in l for l in planted_lines(out)), out
+    assert any("pkg/__init__.py:" in l for l in planted_lines(out)), out
+
+
+def test_survived_is_described_as_the_test_command_passing(tmp_path, capsys):
+    proj = make_project(tmp_path, WEAK)
+    assert tool.main([str(proj), "--test", CMD]) == 0
+    out = capsys.readouterr().out
+    assert "never checked that line" not in out
+    assert "SURVIVED means the test command passed with the bug planted" in out, out

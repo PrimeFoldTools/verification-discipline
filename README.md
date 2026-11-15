@@ -42,11 +42,11 @@ willingness — not any single green check — is the thing on offer.
 cd gate-mutation-example
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-make test        # 24 tests, offline, fake client
+make test        # 65 tests, offline: 9 on the gate (fake client), 56 on try_on_your_repo.py
 make mutations   # 4 seeded bugs, each caught, files restored byte-for-byte
 ```
 
-Requires Python 3 and `pytest`. Nothing here touches a network or a private store.
+Needs Python 3 and `pytest`. Tested on Python 3.9.6 and 3.12.13 (macOS), pytest 8.4.2: all 65 tests pass on both. Other Python versions and Windows are untested. Nothing here touches a network or a private store.
 
 ## Try it on your own project
 
@@ -66,13 +66,16 @@ python3 gate-mutation-example/try_on_your_repo.py /path/to/your/project --change
 
 `--changed` plants bugs only in lines changed since your last commit (or since any git ref: `--changed main`). Each CAUGHT line names the test that caught it, when pytest or unittest reports one.
 
-Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line points at code your tests do not check. A BROKE line means the planted bug made the code fail to compile or import; that is a crash, not a test noticing, so it is not counted. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
+By default it leaves out top-level `tools/`, `scripts/`, `docs/`, `examples/` and `benchmarks/`, because those usually hold helper scripts, not your library. That is a choice about where bugs go, not a sign that your tests are stronger. It prints which of those folders it skipped. `--include-helpers` turns them back on, and `--paths tools/x.py` still plants in the file you name.
 
-It is a two-minute smoke check, not full mutation testing. For that, use [mutmut](https://github.com/boxed/mutmut). Python only, standard library only.
+Each bug is a flipped comparison, a swapped `True`/`False`, `and` turned into `or`, or a `return x` turned into `return None`. A CAUGHT line means your tests noticed. A SURVIVED line means the test command passed with that bug planted: look there first. A BROKE line means the planted bug stopped the file from loading: it did not compile, or it started loading and never reached its last line, wherever your tests import it and whatever `--tb` setting you use. That is a crash, not a test noticing, so it is not counted. One case still counts as CAUGHT: a different file crashes while loading because of the planted bug, and your tests import that other file. A TIMEOUT line means your tests did not finish within `--timeout` seconds with that bug planted; it counts toward the total, not as caught. On its own example project it caught 7 of 8; the one that survived (`gate.py:81`, a receipt flag no test asserts) is in the picture above.
+
+It runs your test command 3 times to check the setup, then once per planted bug: 13 runs at the default of 10 bugs. Measured (see `gate-mutation-example/TRIALS.md`): 3 s on python-slugify, 7 s on humanize, and 100 s on this repo's own example, whose suite is slow (that is the run in the picture above). It is a smoke check, not full mutation testing. For that, use [mutmut](https://github.com/boxed/mutmut). Python only, standard library only.
 
 ### Known limits
 
-- SURVIVED means your tests never checked that line. It is not always a bug.
+- SURVIVED means the test command passed with that bug planted. The line may run with nothing checking its result, or the change may have no visible effect. It is not always a flaw.
+- A file that does not reach its last line when your tests load it (an import that fails and is caught, an exit at import) is left out and named, because a later failure could not be told apart from a broken import.
 - It plants a small sample of bugs (`--max`, default 10). `--seed` makes a run repeatable. It is a smoke check, not a coverage score.
 - Your tests must pass in a plain copy of the project. Tests that need a database, secrets or absolute paths will stop at the first run.
 - Python only. It never edits your real files.
