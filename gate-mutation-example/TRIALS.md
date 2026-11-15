@@ -54,7 +54,7 @@ What did not change:
 
 ## Run 3: after replacing the traceback rule with load markers
 
-Run 2026-11-13 PM, base 048714d plus uncommitted changes. This code is a new snapshot, not the one an outside audit reviewed.
+Run 2026-11-13 PM, base 048714d plus the changes later committed as 6a48ed8. This code is a new snapshot, not the one an outside audit reviewed.
 An outside audit found two scoring errors in Run 2's code, plus a documented gap with `--tb=no`. Rule now: BROKE means the planted file started loading and never reached its last line (a marker line at the top and one at the bottom of the file; nothing reads tracebacks).
 Tool run with Python 3.12.13; projects and commits as before, venvs with pytest 9.2.0. Times are the "(Ns)" the tool printed.
 
