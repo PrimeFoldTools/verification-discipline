@@ -1,0 +1,12 @@
+
+==================================== ERRORS ====================================
+________________________ ERROR collecting test_calc.py _________________________
+test_calc.py:1: in <module>
+    from calc import is_adult
+calc.py:3: in <module>
+    raise NameError("planted")
+E   NameError: planted
+=========================== short test summary info ============================
+ERROR test_calc.py - NameError: planted
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.07s

@@ -4,7 +4,7 @@ A small, self-contained insert gate and the test discipline around it. No networ
 no external store, no private state. Two commands:
 
 ```
-make test        # 9 tests, all with a fake client — the gate runs offline
+make test        # 65 tests, offline: 9 on the gate (fake client), 56 on try_on_your_repo.py (they run pytest on small temp projects)
 make mutations   # flip 4 load-bearing lines, prove each turns the suite RED
 ```
 

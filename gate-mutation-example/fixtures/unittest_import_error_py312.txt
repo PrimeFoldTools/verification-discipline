@@ -1,0 +1,22 @@
+E
+======================================================================
+ERROR: test_ut (unittest.loader._FailedTest.test_ut)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_ut
+Traceback (most recent call last):
+  File "/path/to/python3.12/lib/python3.12/unittest/loader.py", line 396, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/path/to/python3.12/lib/python3.12/unittest/loader.py", line 339, in _get_module_from_name
+    __import__(name)
+  File "/path/to/project/test_ut.py", line 2, in <module>
+    from calc import is_adult
+  File "/path/to/project/calc.py", line 3, in <module>
+    raise NameError("planted")
+NameError: planted
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)
