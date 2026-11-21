@@ -46,7 +46,7 @@ make test        # 70 tests, offline: 9 on the gate (fake client), 61 on try_on_
 make mutations   # 4 seeded bugs, each caught, files restored byte-for-byte
 ```
 
-Needs Python 3 and `pytest`. Tested on Python 3.9.6 (macOS), pytest 8.4.2: all 70 tests pass. An earlier version of the suite (65 tests) also passed on Python 3.12.13; that was not re-run after tests were added. Other Python versions and Windows are untested. Nothing here touches a network or a private store.
+Needs Python 3 and `pytest`. Tested on 2026-11-21 on macOS with Python 3.9.6 (pytest 8.4.2) and Python 3.12.13 (pytest 9.2.0): all 70 tests pass on both. Other Python versions and Windows are untested. Nothing here touches a network or a private store.
 
 ## Try it on your own project
 

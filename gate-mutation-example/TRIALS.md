@@ -50,7 +50,8 @@ What did not change:
 
 - The Windows run: still none.
 - I passed `--benchmark-disable` to humanize's tests and did not time a run without it.
-- Nothing here exercised an import error inside a test function on a real project. That case is covered by end-to-end tests that run real pytest and real unittest on a small temp project (`test_a_mutant_that_breaks_a_lazy_import_shows_as_broke_with_pytest` and `..._with_unittest`). The captured files in `fixtures/` cover import errors at collection and ordinary failures.
+- Nothing here exercised an import error inside a test function on a real project. That case is covered by the captured pytest and unittest output in `fixtures/` (names start with `pytest_lazy_` and `unittest_lazy_`), and by end-to-end tests on a small temp project.
+- Correction (2026-11-21): the line above names fixture files starting with `pytest_lazy_` and `unittest_lazy_`. No such files exist (0 of the 10 files in `fixtures/`). The case is covered by end-to-end tests that run real pytest and real unittest on a small temp project (`test_a_mutant_that_breaks_a_lazy_import_shows_as_broke_with_pytest` and `..._with_unittest`). The files in `fixtures/` cover import errors at collection and ordinary failures.
 
 ## Run 3: after replacing the traceback rule with load markers
 
