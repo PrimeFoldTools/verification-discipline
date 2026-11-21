@@ -42,11 +42,11 @@ willingness — not any single green check — is the thing on offer.
 cd gate-mutation-example
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-make test        # 65 tests, offline: 9 on the gate (fake client), 56 on try_on_your_repo.py
+make test        # 70 tests, offline: 9 on the gate (fake client), 61 on try_on_your_repo.py
 make mutations   # 4 seeded bugs, each caught, files restored byte-for-byte
 ```
 
-Needs Python 3 and `pytest`. Tested on Python 3.9.6 and 3.12.13 (macOS), pytest 8.4.2: all 65 tests pass on both. Other Python versions and Windows are untested. Nothing here touches a network or a private store.
+Needs Python 3 and `pytest`. Tested on Python 3.9.6 (macOS), pytest 8.4.2: all 70 tests pass. An earlier version of the suite (65 tests) also passed on Python 3.12.13; that was not re-run after tests were added. Other Python versions and Windows are untested. Nothing here touches a network or a private store.
 
 ## Try it on your own project
 

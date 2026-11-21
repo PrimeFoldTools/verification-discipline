@@ -527,6 +527,24 @@ def test_a_broad_path_like_dot_does_not_switch_helper_folders_back_on(tmp_path, 
     assert "Skipped helper folders: tools/" in out
 
 
+@pytest.mark.parametrize("folder", ["tools", "scripts", "docs", "examples", "benchmarks"])
+def test_each_of_the_five_helper_folders_is_skipped_by_default_and_named(tmp_path, capsys, folder):
+    (tmp_path / folder).mkdir()
+    (tmp_path / "calc.py").write_text(MODULE)
+    (tmp_path / folder / "helper.py").write_text("def big(n):\n    return n > 100\n")
+    (tmp_path / "test_x.py").write_text(
+        f"import os, sys\nsys.path[:0] = [os.path.join(os.path.dirname(__file__), {folder!r})]\n"
+        "from calc import is_adult\nfrom helper import big\n\n"
+        "def test_all():\n"
+        "    assert is_adult(18) is True and is_adult(17) is False\n"
+        "    assert big(101) is True and big(100) is False\n")
+    assert tool.main([str(tmp_path), "--test", CMD, "--max", "50"]) == 0
+    out = capsys.readouterr().out
+    assert planted_lines(out), out
+    assert not any(f"{folder}/helper.py" in l for l in planted_lines(out)), out
+    assert f"Skipped helper folders: {folder}/" in out, out
+
+
 # 8. an import that fails INSIDE a test function is BROKE, not CAUGHT (end-to-end runs) -----
 
 
