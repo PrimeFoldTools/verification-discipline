@@ -99,7 +99,7 @@ What changed since Run 3 (facts only):
 
 - python-slugify upstream moved: HEAD is now 4b6b5b4 (2026-11-16), not 35aca63. The result is the same, 10 of 10, with the same skip line for `tools/` and 6 of 6 files loaded.
 - humanize upstream did not move: HEAD is still a950045. Both commands give the same result as Run 3 (exit 3; then 10 of 10, 7 of 7 loaded).
-- Tool code: unchanged since Run 3. Between 6a48ed8 and d5d76f4 only `README.md`, `TRIALS.md` and `test_try_on_your_repo.py` changed (one new test, on the five helper folders).
+- Tool code: unchanged since Run 3. Between 6a48ed8 and d5d76f4 five files changed, none of them tool code: `README.md`, `gate-mutation-example/README.md`, `TRIALS.md`, `test_try_on_your_repo.py` (one new test, on the five helper folders) and `mistakes-log-excerpt.md`.
 - Times: slugify 3 s in Run 3, 4 s here; humanize 7 s in Run 3, 6 s here. One run each; I did not measure how much the time varies between runs.
 - Run 3 did not record the number of possible spots, so the 88 and 223 above have nothing to compare with.
 
