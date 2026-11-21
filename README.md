@@ -36,7 +36,7 @@ fleet.
 My validation stack is built to reject flattering results, including my own. That
 willingness — not any single green check — is the thing on offer.
 
-## Runnable in 30 seconds
+## Run it
 
 ```
 cd gate-mutation-example
