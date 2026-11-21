@@ -78,3 +78,30 @@ The audit's four cases, run against the new code (project and test text are in t
 What did not change: Windows is still untested; I did not time humanize without `--benchmark-disable`.
 What this does not cover: a different file that crashes while loading because of the planted bug, when your tests import that other file, still counts as CAUGHT.
 The Run 2 and Run 1 numbers are not rewritten.
+
+## Run 4: 2026-11-21, after the helper-folder skip and lazy-import changes
+
+Run 2026-11-21 17:03 EST, branch `relay/WO-11211317-2` at d5d76f4, no uncommitted changes.
+`try_on_your_repo.py` at d5d76f4 is byte-identical to 6a48ed8, the code Run 3 tested (`git diff 6a48ed8..HEAD` on it is empty).
+Fresh shallow clones (`git clone --depth 1`) of https://github.com/un33k/python-slugify and https://github.com/python-humanize/humanize.
+Tool run with Python 3.12.13. Each project tested in its own venv, pytest 9.2.0.
+python-slugify venv: `pip install pytest==9.2.0 "text-unidecode>=1.3"`; the project itself is not installed.
+humanize venv: `pip install -e ".[tests]" pytest==9.2.0`.
+Times: the "(Ns)" the tool printed, then wall time from `/usr/bin/time -p` ("real").
+
+| Project | Command (after the tool's path and project) | Result | Time |
+|---|---|---|---|
+| python-slugify @ 4b6b5b4 | `--test "<venv>/bin/python -m pytest -q -x tests" --max 10` | 10 of 10 caught, no BROKE, no SURVIVED, no TIMEOUT. Exit 0. Printed `Skipped helper folders: tools/ (helper scripts, not your library). Add --include-helpers to plant bugs there too.` Self-check: 6 of 6 files loaded from the copy. 88 possible spots. All 10 bugs landed in `slugify/` (`slugify.py` ×7, `_legacy.py` ×2, `__main__.py` ×1) | 4 s (real 3.69 s) |
+| humanize @ a950045, `pip install -e ".[tests]"` | `--test "<venv>/bin/python -m pytest -q -x --benchmark-disable tests" --max 10` | Exit 3, nothing planted. "Self-check failed: your tests did not load any source file from this copy." | tool printed no time (real 2.15 s) |
+| humanize, `PYTHONPATH=src` first | `--test "env PYTHONPATH=src <venv>/bin/python -m pytest -q -x --benchmark-disable tests" --max 10` | 10 of 10 caught, no BROKE, no SURVIVED, no TIMEOUT. Exit 0. Self-check: 7 of 7 files loaded from the copy. 223 possible spots. No skip line | 6 s (real 6.50 s) |
+
+What changed since Run 3 (facts only):
+
+- python-slugify upstream moved: HEAD is now 4b6b5b4 (2026-11-16), not 35aca63. The result is the same, 10 of 10, with the same skip line for `tools/` and 6 of 6 files loaded.
+- humanize upstream did not move: HEAD is still a950045. Both commands give the same result as Run 3 (exit 3; then 10 of 10, 7 of 7 loaded).
+- Tool code: unchanged since Run 3. Between 6a48ed8 and d5d76f4 only `README.md`, `TRIALS.md` and `test_try_on_your_repo.py` changed (one new test, on the five helper folders).
+- Times: slugify 3 s in Run 3, 4 s here; humanize 7 s in Run 3, 6 s here. One run each; I did not measure how much the time varies between runs.
+- Run 3 did not record the number of possible spots, so the 88 and 223 above have nothing to compare with.
+
+What was not run: `make self-check` on this repo, a Windows run, and humanize without `--benchmark-disable`.
+Raw output of all three runs was saved outside this repo (`slugify_run.txt`, `humanize_editable_run.txt`, `humanize_run.txt`); Run 1, 2 and 3 text is not changed.
