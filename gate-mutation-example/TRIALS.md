@@ -1,6 +1,6 @@
 # Trials of try_on_your_repo.py
 
-Two runs, both recorded as printed. Run 1 is the first section; Run 2 (after the helper-folder and import-error fixes, re-run on the final code) is at the end.
+Four runs, each recorded as printed, oldest first. Runs 3 and 4 tested the current code of `try_on_your_repo.py` (6a48ed8); Run 4 is the latest (2026-11-21).
 
 ## Run 1
 
